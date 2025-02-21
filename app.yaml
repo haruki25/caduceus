@@ -1,0 +1,74 @@
+$sources:
+  - !pw.io.fs.read
+    path: data
+    format: binary
+    with_metadata: true
+
+  # - !pw.xpacks.connectors.sharepoint.read 
+  #   url: $SHAREPOINT_URL
+  #   tenant: $SHAREPOINT_TENANT
+  #   client_id: $SHAREPOINT_CLIENT_ID
+  #   cert_path: sharepointcert.pem
+  #   thumbprint: $SHAREPOINT_THUMBPRINT
+  #   root_path: $SHAREPOINT_ROOT
+  #   with_metadata: true
+  #   refresh_interval: 30
+
+  - !pw.io.gdrive.read
+    object_id: $GDRIVE_OBJECT_ID
+    service_user_credentials_file: credentials.json
+    file_name_pattern:
+      - "*.pdf"
+      - "*.pptx"
+    object_size_limit: null
+    with_metadata: true
+    refresh_interval: 30
+
+$llm: !pw.xpacks.llm.llms.OpenAIChat
+  model: "gpt-4o-mini"
+  retry_strategy: !pw.udfs.ExponentialBackoffRetryStrategy
+    max_retries: 6
+  cache_strategy: !pw.udfs.DefaultCache
+  temperature: 0
+  capacity: 8
+
+$embedder: !pw.xpacks.llm.embedders.OpenAIEmbedder
+  model: "text-embedding-ada-002"
+  cache_strategy: !pw.udfs.DefaultCache
+
+$splitter: !pw.xpacks.llm.splitters.TokenCountSplitter
+  max_tokens: 400
+
+$parser: !pw.xpacks.llm.parsers.UnstructuredParser
+  cache_strategy: !pw.udfs.DefaultCache
+
+$retriever_factory: !pw.stdlib.indexing.BruteForceKnnFactory
+  reserved_space: 1000
+  embedder: $embedder
+  metric: !pw.engine.BruteForceKnnMetricKind.COS
+  dimensions: 1536
+  
+$document_store: !pw.xpacks.llm.document_store.DocumentStore
+  docs: $sources
+  parser: $parser
+  splitter: $splitter
+  retriever_factory: $retriever_factory
+
+question_answerer: !pw.xpacks.llm.question_answering.AdaptiveRAGQuestionAnswerer
+  llm: $llm
+  indexer: $document_store
+  n_starting_documents: 2
+  factor: 2
+  max_iterations: 4
+  strict_prompt: true
+
+# Change host and port by uncommenting these lines
+host: "localhost"
+port: 8000
+
+# Cache configuration
+# with_cache: true
+
+# If `terminate_on_error` is true then the program will terminate whenever any error is encountered.
+# Defaults to false, uncomment the following line if you want to set it to true
+# terminate_on_error: true

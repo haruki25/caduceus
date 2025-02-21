@@ -1,0 +1,28 @@
+# Ignore cache directories
+Cache/
+__pycache__/
+
+# Ignore virtual environments
+venv/
+*.venv/
+
+# Ignore environment variables and credentials
+.env
+*.env
+credentials.json
+*.pem  # Ignore private keys (e.g., SSH, AWS keys)
+*.crt  # Ignore certificates
+*.key  # Ignore private keys
+
+# Ignore logs and temp files
+*.log
+*.tmp
+.DS_Store  # macOS system file
+Thumbs.db  # Windows system file
+
+# Ignore IDE/editor-specific files
+.vscode/
+.idea/
+*.swp  # Vim swap files
+credentials.json
+.env
