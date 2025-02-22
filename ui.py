@@ -1,17 +1,38 @@
 import logging
 import os
-
-import requests
 import streamlit as st
 from dotenv import load_dotenv
 from pathway.xpacks.llm.question_answering import RAGClient
+from groq import Groq
+from prompt import system_prompt
+from googleapiclient.http import MediaIoBaseUpload
+from googleapiclient.discovery import build
+from google.oauth2 import service_account
+import re
 
 load_dotenv()
 
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+client = Groq(api_key=GROQ_API_KEY)
+
+# Google Drive API credentials
+SERVICE_ACCOUNT_FILE = "credentials.json"
+SCOPES = ["https://www.googleapis.com/auth/drive"]
+
+credentials = service_account.Credentials.from_service_account_file(
+    SERVICE_ACCOUNT_FILE, scopes=SCOPES
+)
+drive_service = build("drive", "v3", credentials=credentials)
+
+# Set host and port from env or defaults
 PATHWAY_HOST = os.environ.get("PATHWAY_HOST", "localhost")
 PATHWAY_PORT = os.environ.get("PATHWAY_PORT", 8000)
 
-st.set_page_config(page_title="Caduceus: Healthcare Diagnostics 🏥", page_icon="favicon.ico", layout="wide")
+st.set_page_config(
+    page_title="Caduceus: Healthcare Diagnostics 🏥",
+    page_icon="assets/favicon.ico",
+    layout="wide"
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -19,200 +40,109 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
     force=True,
 )
-
 logger = logging.getLogger("caduceus")
 logger.setLevel(logging.INFO)
 
+# Instantiate the RAG client
 conn = RAGClient(url=f"http://{PATHWAY_HOST}:{PATHWAY_PORT}")
 
-# note = """
-# <H4><b>Ask a question"""
-# st.markdown(note, unsafe_allow_html=True)
+def enhance_with_groq(prompt: str) -> str:
+    """Sends the response from Pathway RAG to Groq for refinement."""
+    
+    try:
+        completion = client.chat.completions.create(
+            model="deepseek-r1-distill-llama-70b",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_completion_tokens=4096,
+            top_p=0.95,
+            stream=False,
+            stop=None
+        )
+        response = completion.choices[0].message.content
+        clean_response = re.sub(r"<think>.*?</think>", "", response, flags=re.DOTALL).strip()
+        
+        return clean_response
+    except Exception as e:
+        logger.error(f"Groq API error: {e}")
+        return "Error processing the request with Groq."
 
-# st.markdown(
-#     """
-# <style>
-# div[data-baseweb="base-input"]{
-# }
-# input[class]{
-# font-size:150%;
-# color: black;}
-# button[data-testid="baseButton-primary"], button[data-testid="baseButton-secondary"]{
-#     border: none;
-#     display: flex;
-#     background-color: #E7E7E7;
-#     color: #454545;
-#     transition: color 0.3s;
-# }
-# button[data-testid="baseButton-primary"]:hover{
-#     color: #1C1CF0;
-#     background-color: rgba(28,28,240,0.3);
-# }
-# button[data-testid="baseButton-secondary"]:hover{
-#     color: #DC280B;
-#     background-color: rgba(220,40,11,0.3);
-# }
-# div[data-testid="stHorizontalBlock"]:has(button[data-testid="baseButton-primary"]){
-#     display: flex;
-#     flex-direction: column;
-#     z-index: 0;
-#     width: 3rem;
-
-#     transform: translateY(-500px) translateX(672px);
-# }
-# </style>
-# """,
-#     unsafe_allow_html=True,
-# )
-
-
-# question = st.text_input(label="", placeholder="Ask your question?")
-
-
-# def get_options_list(metadata_list: list[dict], opt_key: str) -> list:
-#     """Get all available options in a specific metadata key."""
-#     options = set(map(lambda x: x[opt_key], metadata_list))
-#     return list(options)
-
-
-# logger.info("Requesting pw_list_documents...")
-# document_meta_list = conn.pw_list_documents(keys=[])
-# logger.info("Received response pw_list_documents")
-
-# st.session_state["document_meta_list"] = document_meta_list
-
-# available_files = get_options_list(st.session_state["document_meta_list"], "path")
-
-
-# with st.sidebar:
-#     st.info(
-#         body="See the source code [here](https://github.com/pathwaycom/llm-app/tree/main/examples/pipelines/demo-question-answering).",  # noqa: E501
-#         icon=":material/code:",
-#     )
-
-#     file_names = [i.split("/")[-1] for i in available_files]
-
-#     markdown_table = "| Indexed files |\n| --- |\n"
-#     for file_name in file_names:
-#         markdown_table += f"| {file_name} |\n"
-#     st.markdown(markdown_table, unsafe_allow_html=True)
-
-#     st.button("⟳ Refresh", use_container_width=True)
-
-# css = """
-# <style>
-# .slider-container {
-#     margin-top: 20px; /* Add some space between the main image and the slider */
-# }
-
-# .slider-item {
-#     float: left;
-#     margin: 10px;
-#     width: 120px; /* Adjust the width to your liking */
-#     // height: 50px; /* Adjust the height to your liking */
-#     border: 1px solid #ccc;
-#     border-radius: 5px;
-#     cursor: pointer;
-# }
-
-# .slider-item img {
-#     width: 100%;
-#     height: 100%;
-#     object-fit: cover;
-#     border-radius: 5px;
-# }
-
-# .slider-wrapper {
-#     display: flex;
-#     justify-content: center;
-#     flex-wrap: wrap;
-# }
-
-# .slider-item {
-#     margin: 10px;
-# }
-
-# </style>"""
-
-
-# st.markdown(css, unsafe_allow_html=True)
-
-
-# def send_post_request(
-#     url: str, data: dict, headers: dict = {}, timeout: int | None = None
-# ):
-#     response = requests.post(url, json=data, headers=headers, timeout=timeout)
-#     response.raise_for_status()
-#     return response.json()
-
-
-# if question:
-#     logger.info(
-#         {
-#             "_type": "search_request_event",
-#             "query": question,
-#         }
-#     )
-
-#     with st.spinner("Retrieving response..."):
-#         api_response = conn.pw_ai_answer(question)
-#         response = api_response["response"]
-
-#     logger.info(
-#         {
-#             "_type": "search_response_event",
-#             "query": question,
-#             "response": type(response),
-#         }
-#     )
-
-#     logger.info(type(response))
-
-#     st.markdown(f"**Answering question:** {question}")
-#     st.markdown(f"""{response}""")
-
-
+# Sidebar: Display system info and indexed files
 with st.sidebar:
     st.title("🩺 Caduceus AI")
     st.write("Healthcare Diagnostics Support System")
-
     st.info(
         "See the source code [here](https://github.com/haruki25/caduceus).",
-        icon=":material/code:",
+        icon=":material/code:"
     )
+    st.markdown("---")
+    
+    # **File Upload Section**
+    st.markdown("### Upload Document to Google Drive")
+    uploaded_file = st.file_uploader("Choose a file", type=["pdf", "pptx"])
+
+    # Fetch folder ID from app.yaml
+    with open("app.yaml", "r") as file:
+        app_yaml = file.read()
+    folder_id = re.search(r"(object_id:\s*)([^\n]+)", app_yaml)
+    if folder_id:
+        folder_id = folder_id.group(2)
+    else:
+        folder_id = ""
+
+    if uploaded_file:
+        parent_folder_id = os.getenv("FOLDER_ID", folder_id)
+
+        def upload_to_drive(file, folder_id):
+            """Uploads the file to Google Drive in the specified folder."""
+            file_metadata = {"name": file.name, "parents": [folder_id]}
+            media = MediaIoBaseUpload(file, mimetype="application/octet-stream")
+            uploaded = drive_service.files().create(body=file_metadata, media_body=media, fields="id").execute()
+            return uploaded.get("id")
+
+        if st.button("Upload & Refresh"):
+            file_id = upload_to_drive(uploaded_file, parent_folder_id)
+            if file_id:
+                st.success(f"File uploaded successfully: {uploaded_file.name}")
+                logger.info(f"File {uploaded_file.name} uploaded to Drive with ID {file_id}")
+                
+                # Refresh RAG pipeline
+                st.warning("Refreshing RAG pipeline...")
+                st.session_state["document_meta_list"] = conn.pw_list_documents(keys=[])
+                st.rerun()
+                st.success("RAG Index Updated Successfully!")
 
     st.markdown("---")
-
-    # Caching document metadata
+    
+    # Fetch and cache document metadata
     if "document_meta_list" not in st.session_state:
         logger.info("Fetching document metadata...")
         st.session_state["document_meta_list"] = conn.pw_list_documents(keys=[])
-
+    
     available_files = [
         meta["path"].split("/")[-1] for meta in st.session_state["document_meta_list"]
     ]
-
     if available_files:
         st.markdown("### Indexed Files 📂")
         st.markdown("\n".join(f"- {file}" for file in available_files))
     else:
         st.write("No indexed files found.")
-
+    
     if st.button("🔄 Refresh", use_container_width=True):
         st.session_state["document_meta_list"] = conn.pw_list_documents(keys=[])
         st.rerun()
 
-# Custom CSS for UI Enhancements
+# Custom CSS for input and button enhancements
 st.markdown(
     """
     <style>
-        /* Input field */
         div[data-baseweb="base-input"] input {
             font-size: 18px !important;
             padding: 10px !important;
         }
-
-        /* Primary button styling */
         button[data-testid="baseButton-primary"] {
             background-color: #0066CC !important;
             color: white !important;
@@ -228,22 +158,43 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Main App Section
-st.title("🤖 Ask Caduceus AI")
-st.write("Enter your healthcare-related query below.")
+# Main Chat Interface
+with st.container(border=True):
+    left, right = st.columns([1,15], vertical_alignment="bottom")
+    with left:
+        st.image("assets/medical.png", width=50)
+    with right:
+        st.title("Caduceus AI")
+    st.write("Enter your healthcare-related query in the chat below.")
 
-question = st.text_input("", placeholder="Type your question here...")
+# Initialize conversation history if not already present
+if "messages" not in st.session_state:
+    st.session_state["messages"] = [
+        {"role": "assistant", "content": "Hello, I am Caduceus AI. How can I help you today?"}
+    ]
 
-if question:
-    logger.info(f"User question: {question}")
+# Display all conversation messages
+for msg in st.session_state["messages"]:
+    st.chat_message(msg["role"]).write(msg["content"])
 
+# Capture user input using the chat input component
+user_input = st.chat_input("Type your question here...")
+if user_input:
+    # Append and display the user's message
+    st.session_state["messages"].append({"role": "user", "content": user_input})
+    st.chat_message("user").write(user_input)
+    logger.info(f"User question: {user_input}")
+
+    # Retrieve response from the RAG client with a spinner
     with st.spinner("Retrieving AI-generated response..."):
         try:
-            api_response = conn.pw_ai_answer(question)
-            response = api_response.get("response", "No response received.")
+            api_response = conn.pw_ai_answer(user_input)
+            response_text = api_response.get("response", "No response received.")
+            groq_response = enhance_with_groq(user_input + " " + "RAG Response:" + response_text)
         except Exception as e:
             logger.error(f"Error fetching response: {e}")
-            response = "⚠️ An error occurred while fetching the response."
+            response_text = "⚠️ An error occurred while fetching the response."
 
-    st.subheader("🔎 Answer:")
-    st.markdown(f"> {response}")
+    # Append and display the assistant's response
+    st.session_state["messages"].append({"role": "assistant", "content": groq_response})
+    st.chat_message("assistant").write(groq_response)
