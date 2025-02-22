@@ -29,7 +29,7 @@ PATHWAY_HOST = os.environ.get("PATHWAY_HOST", "localhost")
 PATHWAY_PORT = os.environ.get("PATHWAY_PORT", 8000)
 
 st.set_page_config(
-    page_title="Caduceus: Healthcare Diagnostics 🏥",
+    page_title="Caduceus",
     page_icon="assets/favicon.ico",
     layout="wide"
 )
