@@ -39,7 +39,12 @@ def update_yaml(folder_id):
 
     st.success("Updated app.yaml successfully!")
     
-# Streamlit UI
+st.set_page_config(
+    page_title="Caduceus",
+    page_icon="assets/favicon.ico",
+    layout="wide"
+)
+
 st.title("Patient Data Selection")
 
 PARENT_FOLDER_ID = os.getenv("PARENT_FOLDER_ID")
